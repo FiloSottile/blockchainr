@@ -1,4 +1,5 @@
 // Copyright (c) 2013 Conformal Systems LLC.
+// Copyright (c) 2014 Filippo Valsorda
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
