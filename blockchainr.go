@@ -195,6 +195,7 @@ func DumpBlock(db btcdb.Db, height int64) error {
 				log.Warnf("tx %v (%v)", i, &txsha)
 				log.Warnf("txin %v (parseData)", t)
 				log.Warnf("Error: %v", err)
+				log.Info(spew.Sdump(txin.SignatureScript))
 				continue
 			}
 			log.Debugf("tx %v: TxIn %v: sigStr: %v", i, t, spew.Sdump(sigStr))
@@ -205,6 +206,7 @@ func DumpBlock(db btcdb.Db, height int64) error {
 				log.Warnf("tx %v (%v)", i, &txsha)
 				log.Warnf("txin %v (ParseSignature)", t)
 				log.Warnf("Error: %v", err)
+				log.Info(spew.Sdump(sigStr))
 				continue
 
 			}
@@ -212,7 +214,8 @@ func DumpBlock(db btcdb.Db, height int64) error {
 
 			signatureString := signature.R.String()
 			if rValuesMap[signatureString] != int64(0) {
-				log.Infof("%v:%v:%v DUPLICATE FOUND: %v", blkid, i, t, rValuesMap[signatureString])
+				log.Infof("%v:%v:%v DUPLICATE FOUND: %v",
+					blkid, txsha.String()[:5], t, rValuesMap[signatureString])
 				if len(duplicates[signatureString]) == 0 {
 					duplicates[signatureString] = append(duplicates[signatureString], rValuesMap[signatureString])
 				}
