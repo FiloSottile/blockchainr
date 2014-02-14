@@ -131,15 +131,24 @@ func main() {
 	log.Info(spew.Sdump(duplicates))
 }
 
-func parseData(SignatureScript []uint8) ([]uint8, error) {
+func popData(SignatureScript []uint8) ([]uint8, error) {
+	if len(SignatureScript) < 1 {
+		return nil, fmt.Errorf("empty SignatureScript")
+	}
 	opcode := SignatureScript[0]
 
 	if opcode >= 1 && opcode <= 75 {
+		if len(SignatureScript) < int(opcode+1) {
+			return nil, fmt.Errorf("SignatureScript too short")
+		}
 		sigStr := SignatureScript[1 : opcode+1]
 		return sigStr, nil
 	}
 
 	// TODO: OP_PUSHDATA1 OP_PUSHDATA2 OP_PUSHDATA3
+	if opcode >= 76 && opcode <= 78 {
+		return nil, fmt.Errorf("FIXME: OP_PUSHDATA %v", opcode)
+	}
 
 	return nil, fmt.Errorf("the first opcode (%x) is not a data push", opcode)
 }
@@ -189,7 +198,7 @@ func DumpBlock(db btcdb.Db, height int64) error {
 		for t, txin := range tx.TxIn {
 			log.Debugf("tx %v: TxIn %v: SignatureScript: %v", i, t, spew.Sdump(txin.SignatureScript))
 
-			sigStr, err := parseData(txin.SignatureScript)
+			sigStr, err := popData(txin.SignatureScript)
 			if err != nil {
 				log.Warnf("Block %v (%v)", blkid, sha)
 				log.Warnf("tx %v (%v)", i, &txsha)
