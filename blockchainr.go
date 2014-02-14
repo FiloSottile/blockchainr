@@ -18,13 +18,14 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	// "math/big"
 	"os"
+	"os/signal"
 	"path/filepath"
 )
 
 type ShaHash btcwire.ShaHash
 
 type config struct {
-	DataDir  string `long:"datadir" description:"Directory to store data"`
+	DataDir  string `short:"b" long:"datadir" description:"Directory to store data"`
 	DbType   string `long:"dbtype" description:"Database backend"`
 	TestNet3 bool   `long:"testnet" description:"Use the test network"`
 	// Height   int64  `short:"b" description:"Block height to process" required:"true"`
@@ -44,7 +45,18 @@ const (
 var rValuesMap = make(map[string]int64)
 var duplicates = make(map[string][]int64)
 
+var blocksCounter int64 = 0
+var sigCounter int64 = 0
+
 func main() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, os.Kill)
+
+	go func() {
+		_ = <-c
+		log.Info(spew.Sdump(duplicates))
+	}()
+
 	cfg := config{
 		DbType:  "leveldb",
 		DataDir: defaultDataDir,
@@ -100,6 +112,9 @@ func main() {
 		if err != nil {
 			log.Warnf("Failed to dump block %v, err %v", h, err)
 		}
+		if blocksCounter%10000 == 0 {
+			log.Infof("%v blocks processed, %v signatures stored", blocksCounter, sigCounter)
+		}
 	}
 
 	log.Info(spew.Sdump(duplicates))
@@ -138,13 +153,13 @@ func DumpBlock(db btcdb.Db, height int64) error {
 		return errors.New("WHAT!?")
 	}
 
-	log.Infof("Block %v depth %v", sha, blkid)
+	log.Debugf("Block %v depth %v", sha, blkid)
 
 	log.Debugf("Block %v depth %v %v", sha, blkid, spew.Sdump(rblk))
 	mblk := blk.MsgBlock()
 	log.Debugf("Block %v depth %v %v", sha, blkid, spew.Sdump(mblk))
 
-	log.Infof("Num transactions %v", len(mblk.Transactions))
+	log.Debugf("Num transactions %v", len(mblk.Transactions))
 	for i, tx := range mblk.Transactions {
 
 		txsha, err := tx.TxSha()
@@ -155,10 +170,10 @@ func DumpBlock(db btcdb.Db, height int64) error {
 			continue
 		}
 
-		log.Infof("tx %v: %v", i, &txsha)
+		log.Debugf("tx %v: %v", i, &txsha)
 
 		if btcchain.IsCoinBase(btcutil.NewTx(tx)) {
-			log.Infof("tx %v: skipping (coinbase)", i)
+			log.Debugf("tx %v: skipping (coinbase)", i)
 			continue
 		}
 
@@ -184,22 +199,25 @@ func DumpBlock(db btcdb.Db, height int64) error {
 				continue
 
 			}
-			log.Infof("tx %v: TxIn %v: signature: %v", i, t, spew.Sdump(signature))
+			log.Debugf("tx %v: TxIn %v: signature: %v", i, t, spew.Sdump(signature))
 
 			signatureString := signature.R.String()
 			if rValuesMap[signatureString] != int64(0) {
-				log.Infof("DUPLICATE FOUND: %v", rValuesMap[signatureString])
+				log.Infof("%v:%v:%v DUPLICATE FOUND: %v", blkid, i, t, rValuesMap[signatureString])
 				if len(duplicates[signatureString]) == 0 {
 					duplicates[signatureString] = append(duplicates[signatureString], rValuesMap[signatureString])
 				}
 				duplicates[signatureString] = append(duplicates[signatureString], blkid)
 			} else {
 				rValuesMap[signatureString] = blkid
+				sigCounter++
 			}
 
 		}
 
 	}
+
+	blocksCounter++
 
 	return nil
 }
