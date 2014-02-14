@@ -6,7 +6,7 @@
 package main
 
 import (
-	"errors"
+	"fmt"
 	"github.com/conformal/btcchain"
 	"github.com/conformal/btcdb"
 	_ "github.com/conformal/btcdb/ldb"
@@ -22,6 +22,8 @@ import (
 	"path/filepath"
 	"time"
 )
+
+// TODO: monky-patch OP_CHECKSIG
 
 type ShaHash btcwire.ShaHash
 
@@ -93,11 +95,11 @@ func main() {
 	defer db.Close()
 	log.Infof("db load complete")
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, os.Kill)
+	signal_chan := make(chan os.Signal, 1)
+	signal.Notify(signal_chan, os.Interrupt, os.Kill)
 
 	go func() {
-		_ = <-c
+		_ = <-signal_chan
 		log.Info(spew.Sdump(duplicates))
 		// this will have to be reworked while parallelizing
 		backendLogger.Flush()
@@ -129,8 +131,6 @@ func main() {
 	log.Info(spew.Sdump(duplicates))
 }
 
-var notDataError = errors.New("the first opcode is not a data push")
-
 func parseData(SignatureScript []uint8) ([]uint8, error) {
 	opcode := SignatureScript[0]
 
@@ -141,7 +141,7 @@ func parseData(SignatureScript []uint8) ([]uint8, error) {
 
 	// TODO: OP_PUSHDATA1 OP_PUSHDATA2 OP_PUSHDATA3
 
-	return nil, notDataError
+	return nil, fmt.Errorf("the first opcode (%x) is not a data push", opcode)
 }
 
 func DumpBlock(db btcdb.Db, height int64) error {
@@ -159,7 +159,7 @@ func DumpBlock(db btcdb.Db, height int64) error {
 	}
 	blkid := blk.Height()
 	if blkid != height {
-		return errors.New("WHAT!?")
+		return fmt.Errorf("WHAT!?")
 	}
 
 	log.Debugf("Block %v depth %v", sha, blkid)
