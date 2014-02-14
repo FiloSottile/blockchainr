@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"time"
 )
 
 type ShaHash btcwire.ShaHash
@@ -107,13 +108,17 @@ func main() {
 	}
 	log.Infof("max_heigth: %v", max_heigth)
 
+	last_time := time.Now()
 	for h := int64(0); h < max_heigth; h++ {
+		// TODO: parallelize
 		err = DumpBlock(db, h)
 		if err != nil {
 			log.Warnf("Failed to dump block %v, err %v", h, err)
 		}
 		if blocksCounter%10000 == 0 {
-			log.Infof("%v blocks processed, %v signatures stored", blocksCounter, sigCounter)
+			log.Infof("%v blocks processed in %v, %v signatures stored",
+				blocksCounter, time.Since(last_time), sigCounter)
+			last_time = time.Now()
 		}
 	}
 
