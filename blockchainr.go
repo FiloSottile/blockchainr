@@ -50,14 +50,6 @@ var blocksCounter int64 = 0
 var sigCounter int64 = 0
 
 func main() {
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, os.Kill)
-
-	go func() {
-		_ = <-c
-		log.Info(spew.Sdump(duplicates))
-	}()
-
 	cfg := config{
 		DbType:  "leveldb",
 		DataDir: defaultDataDir,
@@ -100,6 +92,18 @@ func main() {
 	}
 	defer db.Close()
 	log.Infof("db load complete")
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, os.Kill)
+
+	go func() {
+		_ = <-c
+		log.Info(spew.Sdump(duplicates))
+		// this will have to be reworked while parallelizing
+		backendLogger.Flush()
+		db.Close()
+		os.Exit(2)
+	}()
 
 	_, max_heigth, err := db.NewestSha()
 	if err != nil {
