@@ -45,11 +45,15 @@ const (
 	ArgHeight
 )
 
-var rValuesMap = make(map[string]int64)
-var duplicates = make(map[string][]int64)
+var (
+	rValuesMap = make(map[string]int64)
+	duplicates = make(map[string][]int64)
 
-var blocksCounter int64 = 0
-var sigCounter int64 = 0
+	blocksCounter int64 = 0
+	sigCounter    int64 = 0
+
+	errorFile *os.File
+)
 
 func main() {
 	cfg := config{
@@ -114,6 +118,12 @@ func main() {
 	}
 	log.Infof("max_heigth: %v", max_heigth)
 
+	errorFile, err = os.Create("blockchainr_error.log")
+	if err != nil {
+		log.Warnf("failed to create blockchainr_error.log: %v", err)
+		return
+	}
+
 	last_time := time.Now()
 	for h := int64(0); h < max_heigth; h++ {
 		// TODO: parallelize
@@ -128,7 +138,15 @@ func main() {
 		}
 	}
 
+	log.Infof("%v blocks processed, %v signatures stored",
+		blocksCounter, sigCounter)
 	log.Info(spew.Sdump(duplicates))
+}
+
+func logScriptError(blkid int64, sha *btcwire.ShaHash, i int, txsha *btcwire.ShaHash, t int, f string, err error, data []byte) {
+	errorFile.WriteString(fmt.Sprintf(
+		"Block %v (%v) tx %v (%v) txin %v (%v)\nError: %v\n%v",
+		blkid, sha, i, txsha, t, f, err, spew.Sdump(data)))
 }
 
 func popData(SignatureScript []uint8) ([]uint8, error) {
@@ -200,22 +218,16 @@ func DumpBlock(db btcdb.Db, height int64) error {
 
 			sigStr, err := popData(txin.SignatureScript)
 			if err != nil {
-				log.Warnf("Block %v (%v)", blkid, sha)
-				log.Warnf("tx %v (%v)", i, &txsha)
-				log.Warnf("txin %v (parseData)", t)
-				log.Warnf("Error: %v", err)
-				log.Info(spew.Sdump(txin.SignatureScript))
+				logScriptError(blkid, sha, i, &txsha, t,
+					"parseData", err, txin.SignatureScript)
 				continue
 			}
 			log.Debugf("tx %v: TxIn %v: sigStr: %v", i, t, spew.Sdump(sigStr))
 
 			signature, err := btcec.ParseSignature(sigStr, btcec.S256())
 			if err != nil {
-				log.Warnf("Block %v (%v)", blkid, sha)
-				log.Warnf("tx %v (%v)", i, &txsha)
-				log.Warnf("txin %v (ParseSignature)", t)
-				log.Warnf("Error: %v", err)
-				log.Info(spew.Sdump(sigStr))
+				logScriptError(blkid, sha, i, &txsha, t,
+					"ParseSignature", err, sigStr)
 				continue
 
 			}
