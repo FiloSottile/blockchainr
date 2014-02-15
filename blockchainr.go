@@ -46,8 +46,8 @@ const (
 )
 
 var (
-	rValuesMap = make(map[string]int64)
-	duplicates = make(map[string][]int64)
+	rValuesMap = make(map[string]string)
+	duplicates = make(map[string][]string)
 
 	blocksCounter int64 = 0
 	sigCounter    int64 = 0
@@ -104,7 +104,7 @@ func main() {
 
 	go func() {
 		_ = <-signal_chan
-		log.Info(spew.Sdump(duplicates))
+		logResults()
 		// this will have to be reworked while parallelizing
 		backendLogger.Flush()
 		db.Close()
@@ -138,15 +138,25 @@ func main() {
 		}
 	}
 
-	log.Infof("%v blocks processed, %v signatures stored",
-		blocksCounter, sigCounter)
-	log.Info(spew.Sdump(duplicates))
+	logResults()
 }
 
 func logScriptError(blkid int64, sha *btcwire.ShaHash, i int, txsha *btcwire.ShaHash, t int, f string, err error, data []byte) {
 	errorFile.WriteString(fmt.Sprintf(
 		"Block %v (%v) tx %v (%v) txin %v (%v)\nError: %v\n%v",
 		blkid, sha, i, txsha, t, f, err, spew.Sdump(data)))
+}
+
+func logResults() {
+	log.Infof("%v blocks processed, %v signatures stored",
+		blocksCounter, sigCounter)
+
+	resultsFile, err := os.Create("blockchainr.txt")
+	if err != nil {
+		log.Warnf("failed to create blockchainr.txt: %v", err)
+		return
+	}
+	resultsFile.WriteString(spew.Sdump(duplicates))
 }
 
 func popData(SignatureScript []uint8) ([]uint8, error) {
@@ -234,15 +244,16 @@ func DumpBlock(db btcdb.Db, height int64) error {
 			log.Debugf("tx %v: TxIn %v: signature: %v", i, t, spew.Sdump(signature))
 
 			signatureString := signature.R.String()
-			if rValuesMap[signatureString] != int64(0) {
-				log.Infof("%v:%v:%v DUPLICATE FOUND: %v",
-					blkid, txsha.String()[:5], t, rValuesMap[signatureString])
+			sigId := fmt.Sprintf("%v:%v:%v", blkid, txsha.String()[:5], t)
+			if rValuesMap[signatureString] != "" {
+				log.Infof("%v DUPLICATE FOUND: %v", sigId, rValuesMap[signatureString])
 				if len(duplicates[signatureString]) == 0 {
-					duplicates[signatureString] = append(duplicates[signatureString], rValuesMap[signatureString])
+					duplicates[signatureString] = append(
+						duplicates[signatureString], rValuesMap[signatureString])
 				}
-				duplicates[signatureString] = append(duplicates[signatureString], blkid)
+				duplicates[signatureString] = append(duplicates[signatureString], sigId)
 			} else {
-				rValuesMap[signatureString] = blkid
+				rValuesMap[signatureString] = sigId
 				sigCounter++
 			}
 
