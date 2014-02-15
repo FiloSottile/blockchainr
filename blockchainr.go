@@ -190,22 +190,22 @@ func DumpBlock(db btcdb.Db, height int64) error {
 	if err != nil {
 		return err
 	}
-	rblk, err := blk.Bytes()
-	if err != nil {
-		return err
-	}
+	// rblk, err := blk.Bytes()
+	// if err != nil {
+	// 	return err
+	// }
 	blkid := blk.Height()
 	if blkid != height {
 		return fmt.Errorf("WHAT!?")
 	}
 
-	log.Debugf("Block %v depth %v", sha, blkid)
+	// log.Debugf("Block %v depth %v", sha, blkid)
 
-	log.Debugf("Block %v depth %v %v", sha, blkid, spew.Sdump(rblk))
+	// log.Debugf("Block %v depth %v %v", sha, blkid, spew.Sdump(rblk))
 	mblk := blk.MsgBlock()
-	log.Debugf("Block %v depth %v %v", sha, blkid, spew.Sdump(mblk))
+	// log.Debugf("Block %v depth %v %v", sha, blkid, spew.Sdump(mblk))
 
-	log.Debugf("Num transactions %v", len(mblk.Transactions))
+	// log.Debugf("Num transactions %v", len(mblk.Transactions))
 	for i, tx := range mblk.Transactions {
 
 		txsha, err := tx.TxSha()
@@ -216,15 +216,15 @@ func DumpBlock(db btcdb.Db, height int64) error {
 			continue
 		}
 
-		log.Debugf("tx %v: %v", i, &txsha)
+		// log.Debugf("tx %v: %v", i, &txsha)
 
 		if btcchain.IsCoinBase(btcutil.NewTx(tx)) {
-			log.Debugf("tx %v: skipping (coinbase)", i)
+			// log.Debugf("tx %v: skipping (coinbase)", i)
 			continue
 		}
 
 		for t, txin := range tx.TxIn {
-			log.Debugf("tx %v: TxIn %v: SignatureScript: %v", i, t, spew.Sdump(txin.SignatureScript))
+			// log.Debugf("tx %v: TxIn %v: SignatureScript: %v", i, t, spew.Sdump(txin.SignatureScript))
 
 			sigStr, err := popData(txin.SignatureScript)
 			if err != nil {
@@ -232,7 +232,7 @@ func DumpBlock(db btcdb.Db, height int64) error {
 					"parseData", err, txin.SignatureScript)
 				continue
 			}
-			log.Debugf("tx %v: TxIn %v: sigStr: %v", i, t, spew.Sdump(sigStr))
+			// log.Debugf("tx %v: TxIn %v: sigStr: %v", i, t, spew.Sdump(sigStr))
 
 			signature, err := btcec.ParseSignature(sigStr, btcec.S256())
 			if err != nil {
@@ -241,7 +241,7 @@ func DumpBlock(db btcdb.Db, height int64) error {
 				continue
 
 			}
-			log.Debugf("tx %v: TxIn %v: signature: %v", i, t, spew.Sdump(signature))
+			// log.Debugf("tx %v: TxIn %v: signature: %v", i, t, spew.Sdump(signature))
 
 			signatureString := signature.R.String()
 			sigId := fmt.Sprintf("%v:%v:%v", blkid, txsha.String()[:5], t)
