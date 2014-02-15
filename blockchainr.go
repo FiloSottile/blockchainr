@@ -17,6 +17,7 @@ import (
 	"github.com/conformal/go-flags"
 	"github.com/davecgh/go-spew/spew"
 	// "math/big"
+	"encoding/json"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -151,12 +152,17 @@ func logResults() {
 	log.Infof("%v blocks processed, %v signatures stored",
 		blocksCounter, sigCounter)
 
-	resultsFile, err := os.Create("blockchainr.txt")
+	resultsFile, err := os.Create("blockchainr.json")
 	if err != nil {
-		log.Warnf("failed to create blockchainr.txt: %v", err)
+		log.Warnf("failed to create blockchainr.json: %v", err)
 		return
 	}
-	resultsFile.WriteString(spew.Sdump(duplicates))
+	json_result, err := json.MarshalIndent(duplicates, "", "\t")
+	if err != nil {
+		log.Warnf("failed to Marshal the result: %v", err)
+		return
+	}
+	resultsFile.Write(json_result)
 }
 
 func popData(SignatureScript []uint8) ([]uint8, error) {
