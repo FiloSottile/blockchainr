@@ -6,16 +6,13 @@
 package main
 
 import (
-	"fmt"
-	"github.com/conformal/btcchain"
+	"github.com/FiloSottile/blockchainr"
 	"github.com/conformal/btcdb"
 	_ "github.com/conformal/btcdb/ldb"
-	"github.com/conformal/btcec"
 	"github.com/conformal/btclog"
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwire"
 	"github.com/conformal/go-flags"
-	"github.com/davecgh/go-spew/spew"
 	// "math/big"
 	"encoding/json"
 	"os"
@@ -23,8 +20,6 @@ import (
 	"path/filepath"
 	"time"
 )
-
-// TODO: monky-patch OP_CHECKSIG
 
 type ShaHash btcwire.ShaHash
 
@@ -128,9 +123,12 @@ func main() {
 	last_time := time.Now()
 	for h := int64(0); h < max_heigth; h++ {
 		// TODO: parallelize
-		err = DumpBlock(db, h)
+		n, err := blockchainr.DumpBlock(h, db, duplicates, rValuesMap, errorFile, log)
 		if err != nil {
 			log.Warnf("Failed to dump block %v, err %v", h, err)
+		} else {
+			blocksCounter++
+			sigCounter += int64(n)
 		}
 		if blocksCounter%10000 == 0 {
 			log.Infof("%v blocks processed in %v, %v signatures stored",
@@ -140,12 +138,6 @@ func main() {
 	}
 
 	logResults()
-}
-
-func logScriptError(blkid int64, sha *btcwire.ShaHash, i int, txsha *btcwire.ShaHash, t int, f string, err error, data []byte) {
-	errorFile.WriteString(fmt.Sprintf(
-		"Block %v (%v) tx %v (%v) txin %v (%v)\nError: %v\n%v",
-		blkid, sha, i, txsha, t, f, err, spew.Sdump(data)))
 }
 
 func logResults() {
@@ -163,111 +155,4 @@ func logResults() {
 		return
 	}
 	resultsFile.Write(json_result)
-}
-
-func popData(SignatureScript []uint8) ([]uint8, error) {
-	if len(SignatureScript) < 1 {
-		return nil, fmt.Errorf("empty SignatureScript")
-	}
-	opcode := SignatureScript[0]
-
-	if opcode >= 1 && opcode <= 75 {
-		if len(SignatureScript) < int(opcode+1) {
-			return nil, fmt.Errorf("SignatureScript too short")
-		}
-		sigStr := SignatureScript[1 : opcode+1]
-		return sigStr, nil
-	}
-
-	// TODO: OP_PUSHDATA1 OP_PUSHDATA2 OP_PUSHDATA3
-	if opcode >= 76 && opcode <= 78 {
-		return nil, fmt.Errorf("FIXME: OP_PUSHDATA %v", opcode)
-	}
-
-	return nil, fmt.Errorf("the first opcode (%x) is not a data push", opcode)
-}
-
-func DumpBlock(db btcdb.Db, height int64) error {
-	sha, err := db.FetchBlockShaByHeight(height)
-	if err != nil {
-		return err
-	}
-	blk, err := db.FetchBlockBySha(sha)
-	if err != nil {
-		return err
-	}
-	// rblk, err := blk.Bytes()
-	// if err != nil {
-	// 	return err
-	// }
-	blkid := blk.Height()
-	if blkid != height {
-		return fmt.Errorf("WHAT!?")
-	}
-
-	// log.Debugf("Block %v depth %v", sha, blkid)
-
-	// log.Debugf("Block %v depth %v %v", sha, blkid, spew.Sdump(rblk))
-	mblk := blk.MsgBlock()
-	// log.Debugf("Block %v depth %v %v", sha, blkid, spew.Sdump(mblk))
-
-	// log.Debugf("Num transactions %v", len(mblk.Transactions))
-	for i, tx := range mblk.Transactions {
-
-		txsha, err := tx.TxSha()
-		if err != nil {
-			log.Warnf("Block %v (%v)", blkid, sha)
-			log.Warnf("tx %v (%v)", i, &txsha)
-			log.Warnf("Error: %v", err)
-			continue
-		}
-
-		// log.Debugf("tx %v: %v", i, &txsha)
-
-		if btcchain.IsCoinBase(btcutil.NewTx(tx)) {
-			// log.Debugf("tx %v: skipping (coinbase)", i)
-			continue
-		}
-
-		for t, txin := range tx.TxIn {
-			// log.Debugf("tx %v: TxIn %v: SignatureScript: %v", i, t, spew.Sdump(txin.SignatureScript))
-
-			sigStr, err := popData(txin.SignatureScript)
-			if err != nil {
-				logScriptError(blkid, sha, i, &txsha, t,
-					"parseData", err, txin.SignatureScript)
-				continue
-			}
-			// log.Debugf("tx %v: TxIn %v: sigStr: %v", i, t, spew.Sdump(sigStr))
-
-			signature, err := btcec.ParseSignature(sigStr, btcec.S256())
-			if err != nil {
-				logScriptError(blkid, sha, i, &txsha, t,
-					"ParseSignature", err, sigStr)
-				continue
-
-			}
-			// log.Debugf("tx %v: TxIn %v: signature: %v", i, t, spew.Sdump(signature))
-
-			signatureString := signature.R.String()
-			sigId := fmt.Sprintf("%v:%v:%v", blkid, txsha.String()[:5], t)
-			if rValuesMap[signatureString] != "" {
-				log.Infof("%v DUPLICATE FOUND: %v", sigId, rValuesMap[signatureString])
-				if len(duplicates[signatureString]) == 0 {
-					duplicates[signatureString] = append(
-						duplicates[signatureString], rValuesMap[signatureString])
-				}
-				duplicates[signatureString] = append(duplicates[signatureString], sigId)
-			} else {
-				rValuesMap[signatureString] = sigId
-				sigCounter++
-			}
-
-		}
-
-	}
-
-	blocksCounter++
-
-	return nil
 }
