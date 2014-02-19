@@ -3,13 +3,14 @@ package main
 import (
 	"encoding/hex"
 	"encoding/json"
+	"github.com/FiloSottile/blockchainr"
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwire"
 	// "github.com/davecgh/go-spew/spew"
-	"github.com/FiloSottile/blockchainr"
 	"io/ioutil"
 	"log"
 	"math/big"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -18,8 +19,6 @@ import (
 var exported_blocks map[string]string
 
 func grabTxIn(blkid int64, tx_prefix string, txin_n int) *btcwire.TxIn {
-	log.Println(blkid, tx_prefix, txin_n)
-
 	hex_block := exported_blocks[strconv.FormatInt(blkid, 10)]
 	if hex_block == "" {
 		log.Fatalln("There is no data for the block", blkid)
@@ -43,6 +42,7 @@ func grabTxIn(blkid int64, tx_prefix string, txin_n int) *btcwire.TxIn {
 		if tx_prefix != txsha.String()[:5] {
 			continue
 		}
+		log.Println(blkid, txsha.String(), txin_n)
 		if len(tx.TxIn) <= txin_n {
 			// log.Println(txsha.String(), spew.Sdump(tx.TxIn))
 			log.Fatalln("There are not enough TxIn")
@@ -80,6 +80,8 @@ func main() {
 		log.Fatalln("Unmarshal error:", err)
 	}
 
+	balanceCache := make(map[string][]byte)
+
 	for key, value := range duplicates {
 		R, res := new(big.Int).SetString(key, 10)
 		if res != true {
@@ -103,12 +105,47 @@ func main() {
 			}
 
 			txin := grabTxIn(blkid, tx_prefix, txin_n)
-			sig, err := blockchainr.PopData(txin.SignatureScript)
+			sigStr, remaining, err := blockchainr.PopData(txin.SignatureScript)
 			if err != nil {
 				log.Fatalln("PopData failed:", err)
 			}
+			pkStr, _, err := blockchainr.PopData(remaining)
+			if err != nil {
+				log.Println("The second PopData failed - probably a pay-to-PubKey:", err)
+				continue
+			}
 
-			_ = sig
+			_ = sigStr
+
+			// log.Println(spew.Sdump(sigStr), spew.Sdump(pkStr))
+
+			// pubKey, err := btcec.ParsePubKey(pkStr, btcec.S256())
+			// if err != nil {
+			// 	log.Fatalln("ParsePubKey failed:", err)
+			// }
+			// signature, err := btcec.ParseSignature(sigStr, btcec.S256())
+			// if err != nil {
+			// 	log.Fatalln("ParseSignature failed:", err)
+			// }
+
+			aPubKey, err := btcutil.NewAddressPubKey(pkStr, btcwire.MainNet)
+			address := aPubKey.EncodeAddress()
+
+			balance := balanceCache[address]
+			if balance == nil {
+				response, err := http.Get("https://blockchain.info/q/addressbalance/" + address)
+				if err != nil {
+					log.Fatalln("Get failed:", err)
+				}
+				defer response.Body.Close()
+				balance, err = ioutil.ReadAll(response.Body)
+				if err != nil {
+					log.Fatalln("ReadAll failed:", err)
+				}
+				balanceCache[address] = balance
+			}
+
+			log.Println(address, string(balance))
 		}
 	}
 }

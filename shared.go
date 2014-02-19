@@ -19,26 +19,27 @@ import (
 
 // TODO: monky-patch OP_CHECKSIG
 
-func PopData(SignatureScript []uint8) ([]uint8, error) {
+func PopData(SignatureScript []byte) ([]byte, []byte, error) {
 	if len(SignatureScript) < 1 {
-		return nil, fmt.Errorf("empty SignatureScript")
+		return nil, nil, fmt.Errorf("empty SignatureScript")
 	}
 	opcode := SignatureScript[0]
 
 	if opcode >= 1 && opcode <= 75 {
 		if len(SignatureScript) < int(opcode+1) {
-			return nil, fmt.Errorf("SignatureScript too short")
+			return nil, nil, fmt.Errorf("SignatureScript too short")
 		}
 		sigStr := SignatureScript[1 : opcode+1]
-		return sigStr, nil
+		remaining := SignatureScript[opcode+1:]
+		return sigStr, remaining, nil
 	}
 
 	// TODO: OP_PUSHDATA1 OP_PUSHDATA2 OP_PUSHDATA3
 	if opcode >= 76 && opcode <= 78 {
-		return nil, fmt.Errorf("FIXME: OP_PUSHDATA %v", opcode)
+		return nil, nil, fmt.Errorf("FIXME: OP_PUSHDATA %v", opcode)
 	}
 
-	return nil, fmt.Errorf("the first opcode (%x) is not a data push", opcode)
+	return nil, nil, fmt.Errorf("the first opcode (%x) is not a data push", opcode)
 }
 
 func DumpBlock(height int64, db btcdb.Db,
@@ -90,7 +91,7 @@ func DumpBlock(height int64, db btcdb.Db,
 		for t, txin := range tx.TxIn {
 			// log.Debugf("tx %v: TxIn %v: SignatureScript: %v", i, t, spew.Sdump(txin.SignatureScript))
 
-			sigStr, err := PopData(txin.SignatureScript)
+			sigStr, _, err := PopData(txin.SignatureScript)
 			if err != nil {
 				errorFile.WriteString(fmt.Sprintf(
 					"Block %v (%v) tx %v (%v) txin %v (%v)\nError: %v\n%v",
