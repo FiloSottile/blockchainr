@@ -20,13 +20,3 @@ _cgo_export.*
 _testmain.go
 
 *.exe
-
-blockchainr_error.log
-blockchainr_bloom.bin
-blockchainr.json
-
-/data/
-/bin/
-/pkg/
-
-.hg

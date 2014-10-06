@@ -1,0 +1,8 @@
+make all
+
+# download https://bitcointalk.org/index.php?topic=145386.0 to ~/bootstrap.dat
+./bin/addblock --datadir=~/Btcd/ --infile=~/bootstrap.dat
+./bin/btcd --datadir=~/Btcd/
+
+./bin/blockchainr -datadir ~/Btcd/
+./bin/analyzr
