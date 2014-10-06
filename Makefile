@@ -1,5 +1,6 @@
-GO ?= go
+GO     ?= go
 GOPATH := $(CURDIR)
+GO     := env GOPATH="$(GOPATH)" $(GO)
 
 blockchainr: dabloom
 	$(GO) install blockchainr
