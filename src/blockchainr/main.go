@@ -171,7 +171,7 @@ func getSignatures(maxHeigth int64, errorFile io.Writer, log btclog.Logger, db b
 func search(log btclog.Logger, db btcdb.Db, errorFile io.Writer) map[string][]*rData {
 	// Setup signal handler
 	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1, syscall.SIGINFO)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 
 	filter := dablooms.NewScalingBloom(bloomSize, 0.01, "blockchainr_bloom.bin")
 	if filter == nil {

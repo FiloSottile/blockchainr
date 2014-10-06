@@ -22,3 +22,7 @@ btcd:
 
 addblock:
 	$(GO) install github.com/conformal/btcd/util/addblock
+
+clean:
+	-rm bin/*
+	$(MAKE) -C src/github.com/bitly/dablooms clean

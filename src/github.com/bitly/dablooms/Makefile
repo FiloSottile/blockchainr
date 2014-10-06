@@ -113,7 +113,7 @@ $(BLDDIR)/libdablooms.a: $(OBJS_LIBDABLOOMS)
 
 $(BLDDIR)/libdablooms.$(SO_EXT): $(OBJS_LIBDABLOOMS)
 	@echo " SO " $@
-	@$(CC) -o $@ $(ALL_CFLAGS) $(SHARED_LDFLAGS) $(ALL_LDFLAGS) $^
+	@$(CC) -o $@ $^ $(ALL_CFLAGS) $(SHARED_LDFLAGS) $(ALL_LDFLAGS)
 
 $(patsubst %, $(BLDDIR)/%, $(LIB_SYMLNKS)): %: $(BLDDIR)/libdablooms.$(SO_EXT)
 	@echo " SYMLNK " $@
@@ -122,7 +122,7 @@ $(patsubst %, $(BLDDIR)/%, $(LIB_SYMLNKS)): %: $(BLDDIR)/libdablooms.$(SO_EXT)
 
 $(BLDDIR)/test_dablooms: $(OBJS_TESTS) $(BLDDIR)/libdablooms.a
 	@echo " LD " $@
-	@$(CC) -o $@ $(ALL_CFLAGS) $(ALL_LDFLAGS) $(OBJS_TESTS) $(BLDDIR)/libdablooms.a
+	@$(CC) -o $@ $(OBJS_TESTS) $(BLDDIR)/libdablooms.a $(ALL_CFLAGS) $(ALL_LDFLAGS)
 
 test: $(BLDDIR)/test_dablooms
 	@$(BLDDIR)/test_dablooms $(BLDDIR)/testbloom.bin $(WORDS)
