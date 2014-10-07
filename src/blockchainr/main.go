@@ -42,7 +42,7 @@ func (s stringSet) Contains(item string) bool {
 
 const (
 	tickFreq  = 10
-	bloomSize = 50000000 // https://blockchain.info/charts/n-transactions-total
+	bloomSize = 100000000
 	bloomRate = 0.005
 )
 
