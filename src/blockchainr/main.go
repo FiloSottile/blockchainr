@@ -25,6 +25,7 @@ import (
 	_ "github.com/conformal/btcdb/ldb"
 	"github.com/conformal/btcec"
 	"github.com/conformal/btclog"
+	"github.com/conformal/btcscript"
 	"github.com/conformal/btcutil"
 )
 
@@ -74,33 +75,10 @@ func btcdbSetup(dataDir, dbType string) (log btclog.Logger, db btcdb.Db, cleanup
 	return
 }
 
-func popData(SignatureScript []byte) ([]byte, []byte, error) {
-	if len(SignatureScript) < 1 {
-		return nil, nil, fmt.Errorf("empty SignatureScript")
-	}
-	opcode := SignatureScript[0]
-
-	if opcode >= 1 && opcode <= 75 {
-		if len(SignatureScript) < int(opcode+1) {
-			return nil, nil, fmt.Errorf("SignatureScript too short")
-		}
-		sigStr := SignatureScript[1 : opcode+1]
-		remaining := SignatureScript[opcode+1:]
-		return sigStr, remaining, nil
-	}
-
-	// TODO: OP_PUSHDATA1 OP_PUSHDATA2 OP_PUSHDATA3
-	if opcode >= 76 && opcode <= 78 {
-		return nil, nil, fmt.Errorf("FIXME: OP_PUSHDATA %v", opcode)
-	}
-
-	return nil, nil, fmt.Errorf("the first opcode (%x) is not a data push", opcode)
-}
-
 type rData struct {
-	Sig       *btcec.Signature
-	H         int64
-	SigScript []byte
+	sig *btcec.Signature
+	H   int64
+	Tx  int
 }
 
 func getSignatures(maxHeigth int64, errorFile io.Writer, log btclog.Logger, db btcdb.Db) chan *rData {
@@ -135,28 +113,32 @@ func getSignatures(maxHeigth int64, errorFile io.Writer, log btclog.Logger, db b
 				}
 
 				for t, txin := range tx.TxIn {
-					sigStr, _, err := popData(txin.SignatureScript)
+					data, err := btcscript.PushedData(txin.SignatureScript)
 					if err != nil {
 						io.WriteString(errorFile, fmt.Sprintf(
 							"Block %v (%v) tx %v txin %v (%v)\nError: %v\n%v",
-							h, sha, i, t, "parseData", err,
+							h, sha, i, t, "PushedData", err,
 							spew.Sdump(txin.SignatureScript)))
 						continue
 					}
 
-					signature, err := btcec.ParseSignature(sigStr, btcec.S256())
+					if len(data) == 0 {
+						continue
+					}
+
+					signature, err := btcec.ParseSignature(data[0], btcec.S256())
 					if err != nil {
 						io.WriteString(errorFile, fmt.Sprintf(
 							"Block %v (%v) tx %v txin %v (%v)\nError: %v\n%v",
 							h, sha, i, t, "ParseSignature", err,
-							spew.Sdump(sigStr)))
+							spew.Sdump(data)))
 						continue
 					}
 
 					c <- &rData{
-						Sig:       signature,
-						H:         h,
-						SigScript: txin.SignatureScript,
+						sig: signature,
+						H:   h,
+						Tx:  i,
 					}
 				}
 			}
@@ -173,6 +155,7 @@ func search(log btclog.Logger, db btcdb.Db, errorFile io.Writer) map[string][]*r
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 
+	// Potential optimisation: keep the bloom filter between runs
 	filter := dablooms.NewScalingBloom(bloomSize, 0.01, "blockchainr_bloom.bin")
 	if filter == nil {
 		log.Warn("dablooms.NewScalingBloom failed")
@@ -192,22 +175,25 @@ func search(log btclog.Logger, db btcdb.Db, errorFile io.Writer) map[string][]*r
 		lastTime := time.Now()
 		lastSig := int64(0)
 		sigCounter := int64(0)
+		matches := int64(0)
 		ticker := time.Tick(tickFreq * time.Second)
 
 		signatures := getSignatures(maxHeigth, errorFile, log, db)
 		for rd := range signatures {
 			select {
 			case s := <-signalChan:
-				log.Infof("Step %v - signal %v - %v signatures processed in %v, %v total, block %v of %v",
-					step, s, sigCounter-lastSig, time.Since(lastTime), sigCounter, rd.H, maxHeigth)
+				log.Infof("Step %v - signal %v - %v sigs in %.2fs, %v matches, %v total, block %v of %v",
+					step, s, sigCounter-lastSig, time.Since(lastTime).Seconds(),
+					matches, sigCounter, rd.H, maxHeigth)
 
 				if s == syscall.SIGINT || s == syscall.SIGTERM {
 					return rMap
 				}
 
 			case <-ticker:
-				log.Infof("Step %v - %v signatures processed in %v, %v total, block %v of %v",
-					step, sigCounter-lastSig, time.Since(lastTime), sigCounter, rd.H, maxHeigth)
+				log.Infof("Step %v - %v sigs in %.2fs, %v matches, %v total, block %v of %v",
+					step, sigCounter-lastSig, time.Since(lastTime).Seconds(),
+					matches, sigCounter, rd.H, maxHeigth)
 				lastTime = time.Now()
 				lastSig = sigCounter
 
@@ -215,19 +201,23 @@ func search(log btclog.Logger, db btcdb.Db, errorFile io.Writer) map[string][]*r
 				break
 			}
 
+			// Potential optimisation: store in potentialValues also the block
+			// height, and if step 2 finds the same h first, it's a bloom
+			// false positive
 			if step == 1 {
-				b := rd.Sig.R.Bytes()
+				b := rd.sig.R.Bytes()
 				if filter.Check(b) {
-					// fmt.Print(rd.Sig.R.String())
-					potentialValues.Add(rd.Sig.R.String())
+					matches++
+					potentialValues.Add(rd.sig.R.String())
 				} else {
 					if !filter.Add(b, 1) {
 						log.Warn("Add failed (?)")
 					}
 				}
 			} else if step == 2 {
-				if potentialValues.Contains(rd.Sig.R.String()) {
-					rMap[rd.Sig.R.String()] = append(rMap[rd.Sig.R.String()], rd)
+				if potentialValues.Contains(rd.sig.R.String()) {
+					matches++
+					rMap[rd.sig.R.String()] = append(rMap[rd.sig.R.String()], rd)
 				}
 			}
 			sigCounter += 1
@@ -243,7 +233,8 @@ func search(log btclog.Logger, db btcdb.Db, errorFile io.Writer) map[string][]*r
 			f.Close()
 		}
 
-		log.Infof("Step %v done - %v signatures processed", step, sigCounter)
+		log.Infof("Step %v done - %v signatures processed - %v matches",
+			step, sigCounter, matches)
 	}
 	return rMap
 }
