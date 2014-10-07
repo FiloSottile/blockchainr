@@ -69,19 +69,34 @@ func main() {
 			}
 			pkStr, _, err := popData(remaining)
 			if err != nil {
-				log.Printf("The second PopData failed - probably a pay-to-PubKey:", err)
+				log.Println("The second PopData failed - probably a pay-to-PubKey:", err)
 				// FIX: use recoverKeyFromSignature?
 				continue
 			}
 
 			aPubKey, err := btcutil.NewAddressPubKey(pkStr, &btcnet.MainNetParams)
 			if err != nil {
-				log.Printf("Pubkey parse error:", err)
+				log.Println("Pubkey parse error:", err)
 				continue
 			}
 			address := aPubKey.EncodeAddress()
 
 			balance, ok := balanceCache[address]
+			if !ok {
+				response, err := http.Get("https://blockchain.info/q/addressfirstseen/" + address)
+				if err != nil {
+					log.Fatalln("Get failed:", err)
+				}
+				defer response.Body.Close()
+				balance, err = ioutil.ReadAll(response.Body)
+				if err != nil {
+					log.Fatalln("ReadAll failed:", err)
+				}
+				if string(balance) == "0" {
+					balanceCache[address] = []byte("NOT EXISTING")
+					ok = true
+				}
+			}
 			if !ok {
 				response, err := http.Get("https://blockchain.info/q/addressbalance/" + address)
 				if err != nil {
