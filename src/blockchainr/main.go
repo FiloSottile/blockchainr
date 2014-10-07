@@ -40,7 +40,7 @@ func (s stringSet) Contains(item string) bool {
 }
 
 const (
-	tickFreq  = 2
+	tickFreq  = 10
 	bloomSize = 50000000 // https://blockchain.info/charts/n-transactions-total
 )
 
@@ -282,15 +282,20 @@ func main() {
 
 	duplicates := search(log, db, errorFile)
 
+	realDuplicates := make(map[string][]*rData)
+	for k, v := range duplicates {
+		if len(v) > 1 {
+			realDuplicates[k] = v
+		}
+	}
+
 	resultsFile, err := os.Create("blockchainr.json")
 	if err != nil {
 		log.Warnf("failed to create blockchainr.json: %v", err)
 		return
 	}
-	jsonResult, err := json.MarshalIndent(duplicates, "", "\t")
-	if err != nil {
-		log.Warnf("failed to Marshal the result: %v", err)
+	if json.NewEncoder(resultsFile).Encode(realDuplicates) != nil {
+		log.Warnf("failed to Encode the result: %v", err)
 		return
 	}
-	resultsFile.Write(jsonResult)
 }

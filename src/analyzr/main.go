@@ -60,10 +60,6 @@ func main() {
 	balanceCache := make(map[string][]byte)
 
 	for r, result := range results {
-		if len(result) < 2 {
-			continue
-		}
-
 		log.Println(r)
 
 		for _, rd := range result {
