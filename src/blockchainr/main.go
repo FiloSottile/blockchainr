@@ -43,6 +43,7 @@ func (s stringSet) Contains(item string) bool {
 const (
 	tickFreq  = 10
 	bloomSize = 50000000 // https://blockchain.info/charts/n-transactions-total
+	bloomRate = 0.005
 )
 
 func btcdbSetup(dataDir, dbType string) (log btclog.Logger, db btcdb.Db, cleanup func()) {
@@ -158,7 +159,7 @@ func search(log btclog.Logger, db btcdb.Db, errorFile io.Writer) map[string][]*r
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
 
 	// Potential optimisation: keep the bloom filter between runs
-	filter := dablooms.NewScalingBloom(bloomSize, 0.01, "blockchainr_bloom.bin")
+	filter := dablooms.NewScalingBloom(bloomSize, bloomRate, "blockchainr_bloom.bin")
 	if filter == nil {
 		log.Warn("dablooms.NewScalingBloom failed")
 		return nil
