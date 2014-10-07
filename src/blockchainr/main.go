@@ -76,9 +76,10 @@ func btcdbSetup(dataDir, dbType string) (log btclog.Logger, db btcdb.Db, cleanup
 }
 
 type rData struct {
-	sig *btcec.Signature
-	H   int64
-	Tx  int
+	sig  *btcec.Signature
+	H    int64
+	Tx   int
+	TxIn int
 }
 
 func getSignatures(maxHeigth int64, errorFile io.Writer, log btclog.Logger, db btcdb.Db) chan *rData {
@@ -136,9 +137,10 @@ func getSignatures(maxHeigth int64, errorFile io.Writer, log btclog.Logger, db b
 					}
 
 					c <- &rData{
-						sig: signature,
-						H:   h,
-						Tx:  i,
+						sig:  signature,
+						H:    h,
+						Tx:   i,
+						TxIn: t,
 					}
 				}
 			}
@@ -220,7 +222,7 @@ func search(log btclog.Logger, db btcdb.Db, errorFile io.Writer) map[string][]*r
 					rMap[rd.sig.R.String()] = append(rMap[rd.sig.R.String()], rd)
 				}
 			}
-			sigCounter += 1
+			sigCounter++
 		}
 
 		if *memprofile != "" {
