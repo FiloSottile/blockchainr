@@ -3,7 +3,7 @@
 <style>
 
 body {
-  font: 14px 'Open Sans';
+  font: 20px 'Open Sans';
 }
 
 .axis path,
@@ -13,12 +13,17 @@ body {
   shape-rendering: crispEdges;
 }
 
+.axis path {
+  stroke-width: 3px;
+
+}
+
 </style>
 <body>
 <script src="http://d3js.org/d3.v3.min.js"></script>
 <script>
 
-var margin = {top: 20, right: 20, bottom: 30, left: 40},
+var margin = {top: 20, right: 30, bottom: 40, left: 40},
     width = 960 - margin.left - margin.right,
     height = 600 - margin.top - margin.bottom,
     timeFormat = d3.time.format("%b %y");
@@ -27,12 +32,14 @@ var x = d3.time.scale()
     .range([0, width]);
 
 var y = d3.scale.linear()
-    .range([0, height]);
+    .range([20, height - 5]);
 
 var color = d3.scale.category20();
 
 var xAxis = d3.svg.axis()
     .scale(x)
+    .ticks(d3.time.months, 4)
+    .tickPadding(10)
     .tickFormat(timeFormat);
 
 var svg = d3.select("body").append("svg")
@@ -59,9 +66,19 @@ d3.tsv("analyzr.tsv", function(error, data) {
       .attr("class", "label")
       .attr("transform", "rotate(-90)")
       .attr("y", 6)
+      .attr("x", -170)
       .attr("dy", ".71em")
       .style("text-anchor", "end")
-      .text("Repeated r value")
+      .html('Repeated r value');
+
+  svg.append("text")
+      .attr("class", "label")
+      .attr("transform", "rotate(-90)")
+      .attr("y", 40)
+      .attr("x", -180)
+      .attr("dy", ".71em")
+      .style("text-anchor", "end")
+      .html('Color: address');
 
   svg.selectAll(".dot")
       .data(data)
@@ -70,7 +87,10 @@ d3.tsv("analyzr.tsv", function(error, data) {
       .attr("r", 3.5)
       .attr("cx", function(d) { return x(d.blkTime); })
       .attr("cy", function(d) { return y(d.r); })
-      .style("fill", function(d) { return color(d.r); });
+      .style("fill", function(d) { return color(d.addr); })
+      .on("click", function(d) {
+          console.log(d);
+      });
 
 });
 
