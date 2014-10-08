@@ -3,10 +3,12 @@ package main
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"fmt"
 	"log"
 	"math/big"
 	"reflect"
 
+	"github.com/conformal/btcdb"
 	"github.com/conformal/btcec"
 	"github.com/conformal/btcnet"
 	"github.com/conformal/btcutil"
@@ -91,11 +93,22 @@ func recoverKey(sigA, sigB *btcec.Signature, hashA, hashB []byte, pubKey *btcec.
 	}
 }
 
-func doTheMagic(targets map[[2]string][]*rData) {
+func doTheMagic(targets map[[2]string][]*rData, db btcdb.Db) {
 	for _, target := range targets {
 		if len(target) < 2 {
 			// The r value was reused across different addresses
 			// TODO: also this information would be interesting to graph
+
+			for _, rd := range target {
+				blkPrev, _ := db.FetchBlockBySha(rd.txPrev.BlkSha)
+				fmt.Printf("%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\n",
+					rd.in.H, rd.blkSha.String(), rd.blk.MsgBlock().Header.Timestamp.Unix(),
+					rd.in.Tx, rd.tx.Sha(), rd.in.TxIn,
+					blkPrev.Height(), rd.txPrev.BlkSha.String(), blkPrev.MsgBlock().Header.Timestamp.Unix(),
+					rd.r, rd.address, getBalance(rd.address),
+				)
+			}
+
 			continue
 		}
 
@@ -118,5 +131,15 @@ func doTheMagic(targets map[[2]string][]*rData) {
 		}
 
 		log.Printf("%v\n\n", wif.String())
+
+		for _, rd := range target {
+			blkPrev, _ := db.FetchBlockBySha(rd.txPrev.BlkSha)
+			fmt.Printf("%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\n",
+				rd.in.H, rd.blkSha.String(), rd.blk.MsgBlock().Header.Timestamp.Unix(),
+				rd.in.Tx, rd.tx.Sha(), rd.in.TxIn,
+				blkPrev.Height(), rd.txPrev.BlkSha.String(), blkPrev.MsgBlock().Header.Timestamp.Unix(),
+				rd.r, rd.address, getBalance(rd.address), wif.String(),
+			)
+		}
 	}
 }
