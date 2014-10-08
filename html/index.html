@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+body {
+  font: 14px 'Open Sans';
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+</style>
+<body>
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script>
+
+var margin = {top: 20, right: 20, bottom: 30, left: 40},
+    width = 960 - margin.left - margin.right,
+    height = 600 - margin.top - margin.bottom,
+    timeFormat = d3.time.format("%b %y");
+
+var x = d3.time.scale()
+    .range([0, width]);
+
+var y = d3.scale.ordinal()
+    .rangePoints([0, height]);
+
+var color = d3.scale.ordinal();
+
+var xAxis = d3.svg.axis()
+    .scale(x)
+    .tickFormat(timeFormat);
+
+var svg = d3.select("body").append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+d3.tsv("analyzr.tsv", function(error, data) {
+  data.forEach(function(d) {
+    d.blkTime = +d.blkTime;
+    d.blkTime = new Date(d.blkTime * 1000);
+  });
+
+  x.domain(d3.extent(data, function(d) { return d.blkTime; })).nice();
+  y.domain(d3.nest().key(function(d) { return d.r; }).entries(data));
+
+  color.domain(d3.nest().key(function(d) { return d.r; }).entries(data));
+
+  svg.append("g")
+      .attr("class", "x axis")
+      .attr("transform", "translate(0," + height + ")")
+      .call(xAxis);
+
+  svg.append("text")
+      .attr("class", "label")
+      .attr("transform", "rotate(-90)")
+      .attr("y", 6)
+      .attr("dy", ".71em")
+      .style("text-anchor", "end")
+      .text("Repeated r value")
+
+  svg.selectAll(".dot")
+      .data(data)
+    .enter().append("circle")
+      .attr("class", "dot")
+      .attr("r", 3.5)
+      .attr("cx", function(d) { return x(d.blkTime); })
+      .attr("cy", function(d) { return y(d.r); })
+      .style("fill", function(d) { return color(d.r); });
+
+});
+
+</script>
