@@ -26,10 +26,10 @@ var margin = {top: 20, right: 20, bottom: 30, left: 40},
 var x = d3.time.scale()
     .range([0, width]);
 
-var y = d3.scale.ordinal()
-    .rangePoints([0, height]);
+var y = d3.scale.linear()
+    .range([0, height]);
 
-var color = d3.scale.ordinal();
+var color = d3.scale.category20();
 
 var xAxis = d3.svg.axis()
     .scale(x)
@@ -48,9 +48,7 @@ d3.tsv("analyzr.tsv", function(error, data) {
   });
 
   x.domain(d3.extent(data, function(d) { return d.blkTime; })).nice();
-  y.domain(d3.nest().key(function(d) { return d.r; }).entries(data));
-
-  color.domain(d3.nest().key(function(d) { return d.r; }).entries(data));
+  y.domain(d3.extent(data, function(d) { return d.r; })).nice();
 
   svg.append("g")
       .attr("class", "x axis")
