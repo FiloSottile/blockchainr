@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"net/http"
 	"path/filepath"
 
 	"github.com/conformal/btcdb"
@@ -36,43 +35,6 @@ func btcdbSetup(dataDir, dbType string) (db btcdb.Db) {
 	log.Println("db load complete")
 
 	return
-}
-
-var balanceCache = make(map[string][]byte)
-
-func getBalance(address string) string {
-	balance, ok := balanceCache[address]
-
-	if ok {
-		return string(balance)
-	}
-
-	response, err := http.Get("https://blockchain.info/q/addressfirstseen/" + address)
-	if err != nil {
-		log.Fatalln("Get failed:", err)
-	}
-	defer response.Body.Close()
-	balance, err = ioutil.ReadAll(response.Body)
-	if err != nil {
-		log.Fatalln("ReadAll failed:", err)
-	}
-	if string(balance) == "0" {
-		balanceCache[address] = []byte("NOT EXISTING")
-		return "NOT EXISTING"
-	}
-
-	response, err = http.Get("https://blockchain.info/q/addressbalance/" + address)
-	if err != nil {
-		log.Fatalln("Get failed:", err)
-	}
-	defer response.Body.Close()
-	balance, err = ioutil.ReadAll(response.Body)
-	if err != nil {
-		log.Fatalln("ReadAll failed:", err)
-	}
-	balanceCache[address] = balance
-
-	return string(balance)
 }
 
 type inData struct {
@@ -271,7 +233,7 @@ func printLine(rd *rData) {
 	fmt.Printf("\t%v", rd.r)
 
 	if rd.address != "" {
-		fmt.Printf("\t%v\t%v", rd.address, getBalance(rd.address))
+		fmt.Printf("\t%v", rd.address)
 	}
 
 	if rd.wif != nil {
@@ -307,7 +269,7 @@ func main() {
 		return
 	}
 
-	fmt.Println("blkH\tblkSha\tblkTime\ttxIndex\ttxSha\ttxInIndex\tprevBlkH\tprevBlkSha\tprevBlkTime\tr\taddr\tbalance\twif")
+	fmt.Println("blkH\tblkSha\tblkTime\ttxIndex\ttxSha\ttxInIndex\tprevBlkH\tprevBlkSha\tprevBlkTime\tr\taddr\twif")
 
 	targets := make(map[[2]string][]*rData)
 

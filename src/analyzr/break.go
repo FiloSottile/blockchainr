@@ -108,7 +108,7 @@ func doTheMagic(targets map[[2]string][]*rData, db btcdb.Db) {
 		a := target[0]
 		b := target[1]
 
-		log.Printf("[%v] %v\n", a.address, getBalance(a.address))
+		log.Printf("[%v]\n", a.address)
 		log.Printf("Repeated r value: %v (%v times)\n", a.r, len(target))
 
 		privKey := recoverKey(a.signature, b.signature, a.hash, b.hash, a.pubKey)
