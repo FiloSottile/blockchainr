@@ -31,10 +31,11 @@ var margin = {top: 20, right: 30, bottom: 40, left: 40},
 var x = d3.time.scale()
     .range([0, width]);
 
-var y = d3.scale.linear()
-    .range([20, height - 5]);
+var y = d3.scale.ordinal()
+    .rangePoints([20, height - 5]);
 
-var color = d3.scale.category20();
+var color = d3.scale.ordinal()
+    .rangePoints([0, 360]);
 
 var xAxis = d3.svg.axis()
     .scale(x)
@@ -48,14 +49,19 @@ var svg = d3.select("body").append("svg")
   .append("g")
     .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
-d3.tsv("analyzr.tsv", function(error, data) {
+d3.tsv("../data/analyzr.tsv", function(error, data) {
+  addrDomain = d3.set();
+  rDomain = d3.set();
+
   data.forEach(function(d) {
-    d.blkTime = +d.blkTime;
     d.blkTime = new Date(d.blkTime * 1000);
+    addrDomain.add(d.addr);
+    rDomain.add(d.r);
   });
 
   x.domain(d3.extent(data, function(d) { return d.blkTime; })).nice();
-  y.domain(d3.extent(data, function(d) { return d.r; })).nice();
+  y.domain(addrDomain.values());
+  color.domain(rDomain.values());
 
   svg.append("g")
       .attr("class", "x axis")
@@ -69,16 +75,16 @@ d3.tsv("analyzr.tsv", function(error, data) {
       .attr("x", -170)
       .attr("dy", ".71em")
       .style("text-anchor", "end")
-      .html('Repeated r value');
+      .html('Address');
 
   svg.append("text")
       .attr("class", "label")
       .attr("transform", "rotate(-90)")
       .attr("y", 40)
-      .attr("x", -180)
+      .attr("x", -170)
       .attr("dy", ".71em")
       .style("text-anchor", "end")
-      .html('Color: address');
+      .html('Color: r value');
 
   svg.selectAll(".dot")
       .data(data)
@@ -86,8 +92,8 @@ d3.tsv("analyzr.tsv", function(error, data) {
       .attr("class", "dot")
       .attr("r", 3.5)
       .attr("cx", function(d) { return x(d.blkTime); })
-      .attr("cy", function(d) { return y(d.r); })
-      .style("fill", function(d) { return color(d.addr); })
+      .attr("cy", function(d) { return y(d.addr); })
+      .style("fill", function(d) { return d3.hsl(color(d.r), 0.5, 0.5); })
       .on("click", function(d) {
           console.log(d);
       });
