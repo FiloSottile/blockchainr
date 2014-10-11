@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/pprof"
+	"sync"
 	"syscall"
 	"time"
 
@@ -82,65 +83,88 @@ type rData struct {
 }
 
 func getSignatures(maxHeigth int64, log btclog.Logger, db btcdb.Db) chan *rData {
-	c := make(chan *rData)
+	heigthChan := make(chan int64)
+	blockChan := make(chan *btcutil.Block)
+	sigChan := make(chan *rData)
 
 	go func() {
 		for h := int64(0); h < maxHeigth; h++ {
-			sha, err := db.FetchBlockShaByHeight(h)
-			if err != nil {
-				log.Warnf("failed FetchBlockShaByHeight(%v): %v", h, err)
-				return
-			}
-			blk, err := db.FetchBlockBySha(sha)
-			if err != nil {
-				log.Warnf("failed FetchBlockBySha(%v) - h %v: %v", sha, h, err)
-				return
-			}
-
-			mblk := blk.MsgBlock()
-
-			for i, tx := range mblk.Transactions {
-				// txsha, err := tx.TxSha()
-				// if err != nil {
-				// 	log.Warnf("Block %v (%v)", h, sha)
-				// 	log.Warnf("tx %v (%v)", i, &txsha)
-				// 	log.Warnf("Error: %v", err)
-				// 	continue
-				// }
-
-				if btcchain.IsCoinBase(btcutil.NewTx(tx)) {
-					continue
-				}
-
-				for t, txin := range tx.TxIn {
-					data, err := btcscript.PushedData(txin.SignatureScript)
-					if err != nil {
-						continue
-					}
-
-					if len(data) == 0 {
-						continue
-					}
-
-					signature, err := btcec.ParseSignature(data[0], btcec.S256())
-					if err != nil {
-						continue
-					}
-
-					c <- &rData{
-						sig:  signature,
-						H:    h,
-						Tx:   i,
-						TxIn: t,
-					}
-				}
-			}
+			heigthChan <- h
 		}
 
-		close(c)
+		close(heigthChan)
 	}()
 
-	return c
+	var blockWg sync.WaitGroup
+	for i := 0; i <= 10; i++ {
+		blockWg.Add(1)
+		go func() {
+			for h := range heigthChan {
+				sha, err := db.FetchBlockShaByHeight(h)
+				if err != nil {
+					log.Warnf("failed FetchBlockShaByHeight(%v): %v", h, err)
+					return
+				}
+				blk, err := db.FetchBlockBySha(sha)
+				if err != nil {
+					log.Warnf("failed FetchBlockBySha(%v) - h %v: %v", sha, h, err)
+					return
+				}
+
+				blockChan <- blk
+			}
+			blockWg.Done()
+		}()
+	}
+	go func() {
+		blockWg.Wait()
+		close(blockChan)
+	}()
+
+	var sigWg sync.WaitGroup
+	for i := 0; i <= 10; i++ {
+		sigWg.Add(1)
+		go func() {
+			for blk := range blockChan {
+				mblk := blk.MsgBlock()
+				for i, tx := range mblk.Transactions {
+					if btcchain.IsCoinBase(btcutil.NewTx(tx)) {
+						continue
+					}
+
+					for t, txin := range tx.TxIn {
+						data, err := btcscript.PushedData(txin.SignatureScript)
+						if err != nil {
+							continue
+						}
+
+						if len(data) == 0 {
+							continue
+						}
+
+						signature, err := btcec.ParseSignature(data[0], btcec.S256())
+						if err != nil {
+							continue
+						}
+
+						sigChan <- &rData{
+							sig:  signature,
+							H:    blk.Height(),
+							Tx:   i,
+							TxIn: t,
+						}
+					}
+				}
+			}
+			sigWg.Done()
+		}()
+	}
+	go func() {
+		sigWg.Wait()
+		close(sigChan)
+	}()
+
+	return sigChan
 }
 
 func search(log btclog.Logger, db btcdb.Db) map[string][]*rData {
