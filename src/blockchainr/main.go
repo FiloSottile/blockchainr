@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -18,7 +17,6 @@ import (
 	"time"
 
 	"github.com/bitly/dablooms/godablooms"
-	"github.com/davecgh/go-spew/spew"
 
 	"github.com/conformal/btcchain"
 	"github.com/conformal/btcdb"
@@ -83,7 +81,7 @@ type rData struct {
 	TxIn int
 }
 
-func getSignatures(maxHeigth int64, errorFile io.Writer, log btclog.Logger, db btcdb.Db) chan *rData {
+func getSignatures(maxHeigth int64, log btclog.Logger, db btcdb.Db) chan *rData {
 	c := make(chan *rData)
 
 	go func() {
@@ -117,10 +115,6 @@ func getSignatures(maxHeigth int64, errorFile io.Writer, log btclog.Logger, db b
 				for t, txin := range tx.TxIn {
 					data, err := btcscript.PushedData(txin.SignatureScript)
 					if err != nil {
-						io.WriteString(errorFile, fmt.Sprintf(
-							"Block %v (%v) tx %v txin %v (%v)\nError: %v\n%v",
-							h, sha, i, t, "PushedData", err,
-							spew.Sdump(txin.SignatureScript)))
 						continue
 					}
 
@@ -130,10 +124,6 @@ func getSignatures(maxHeigth int64, errorFile io.Writer, log btclog.Logger, db b
 
 					signature, err := btcec.ParseSignature(data[0], btcec.S256())
 					if err != nil {
-						io.WriteString(errorFile, fmt.Sprintf(
-							"Block %v (%v) tx %v txin %v (%v)\nError: %v\n%v",
-							h, sha, i, t, "ParseSignature", err,
-							spew.Sdump(data)))
 						continue
 					}
 
@@ -153,7 +143,7 @@ func getSignatures(maxHeigth int64, errorFile io.Writer, log btclog.Logger, db b
 	return c
 }
 
-func search(log btclog.Logger, db btcdb.Db, errorFile io.Writer) map[string][]*rData {
+func search(log btclog.Logger, db btcdb.Db) map[string][]*rData {
 	// Setup signal handler
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
@@ -181,7 +171,7 @@ func search(log btclog.Logger, db btcdb.Db, errorFile io.Writer) map[string][]*r
 		matches := int64(0)
 		ticker := time.Tick(tickFreq * time.Second)
 
-		signatures := getSignatures(maxHeigth, errorFile, log, db)
+		signatures := getSignatures(maxHeigth, log, db)
 		for rd := range signatures {
 			select {
 			case s := <-signalChan:
@@ -267,14 +257,7 @@ func main() {
 	log, db, dbCleanup := btcdbSetup(*dataDir, *dbType)
 	defer dbCleanup()
 
-	errorFile, err := os.Create("blockchainr_error.log")
-	if err != nil {
-		log.Warnf("failed to create blockchainr_error.log: %v", err)
-		return
-	}
-	defer errorFile.Close()
-
-	duplicates := search(log, db, errorFile)
+	duplicates := search(log, db)
 
 	realDuplicates := make(map[string][]*rData)
 	for k, v := range duplicates {
