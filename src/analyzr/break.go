@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"fmt"
 	"log"
 	"math/big"
 	"reflect"
@@ -100,13 +99,7 @@ func doTheMagic(targets map[[2]string][]*rData, db btcdb.Db) {
 			// TODO: also this information would be interesting to graph
 
 			for _, rd := range target {
-				blkPrev, _ := db.FetchBlockBySha(rd.txPrev.BlkSha)
-				fmt.Printf("%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\n",
-					rd.in.H, rd.blkSha.String(), rd.blk.MsgBlock().Header.Timestamp.Unix(),
-					rd.in.Tx, rd.tx.Sha(), rd.in.TxIn,
-					blkPrev.Height(), rd.txPrev.BlkSha.String(), blkPrev.MsgBlock().Header.Timestamp.Unix(),
-					rd.r, rd.address, getBalance(rd.address),
-				)
+				printLine(rd)
 			}
 
 			continue
@@ -130,16 +123,11 @@ func doTheMagic(targets map[[2]string][]*rData, db btcdb.Db) {
 			continue
 		}
 
-		log.Printf("%v\n\n", wif.String())
-
 		for _, rd := range target {
-			blkPrev, _ := db.FetchBlockBySha(rd.txPrev.BlkSha)
-			fmt.Printf("%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\n",
-				rd.in.H, rd.blkSha.String(), rd.blk.MsgBlock().Header.Timestamp.Unix(),
-				rd.in.Tx, rd.tx.Sha(), rd.in.TxIn,
-				blkPrev.Height(), rd.txPrev.BlkSha.String(), blkPrev.MsgBlock().Header.Timestamp.Unix(),
-				rd.r, rd.address, getBalance(rd.address), wif.String(),
-			)
+			rd.wif = wif
+			printLine(rd)
 		}
+
+		log.Printf("%v\n\n", wif.String())
 	}
 }

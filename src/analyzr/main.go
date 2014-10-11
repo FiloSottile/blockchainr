@@ -95,6 +95,7 @@ type rData struct {
 	txPrev         *btcdb.TxListReply
 	txPrevOut      *btcwire.TxOut
 	txPrevOutIndex uint32
+	blkPrev        *btcutil.Block
 
 	script *btcscript.Script
 
@@ -107,6 +108,8 @@ type rData struct {
 
 	address    string
 	compressed bool
+
+	wif *btcutil.WIF
 }
 
 func fetchTx(db btcdb.Db, rd *rData) error {
@@ -142,9 +145,16 @@ func fetchPrev(db btcdb.Db, rd *rData) error {
 			rd.txIn.PreviousOutPoint.Hash, rd.in.H, len(txPrevList))
 	}
 
+	blkPrev, err := db.FetchBlockBySha(txPrevList[0].BlkSha)
+	if err != nil {
+		return fmt.Errorf("failed prev FetchBlockBySha(%v) - h %v: %v\n",
+			txPrevList[0].BlkSha, rd.in.H, err)
+	}
+
 	rd.txPrev = txPrevList[0]
 	rd.txPrevOutIndex = rd.txIn.PreviousOutPoint.Index
 	rd.txPrevOut = rd.txPrev.Tx.TxOut[rd.txPrevOutIndex]
+	rd.blkPrev = blkPrev
 
 	return nil
 }
@@ -243,6 +253,34 @@ func opCheckSig(db btcdb.Db, rd *rData) error {
 	return nil
 }
 
+func printLine(rd *rData) {
+	fmt.Printf("%v\t%v\t%v",
+		rd.in.H,
+		rd.blkSha.String(),
+		rd.blk.MsgBlock().Header.Timestamp.Unix(),
+	)
+
+	fmt.Printf("\t%v\t%v\t%v", rd.in.Tx, rd.tx.Sha(), rd.in.TxIn)
+
+	fmt.Printf("\t%v\t%v\t%v",
+		rd.blkPrev.Height(),
+		rd.txPrev.BlkSha.String(),
+		rd.blkPrev.MsgBlock().Header.Timestamp.Unix(),
+	)
+
+	fmt.Printf("\t%v", rd.r)
+
+	if rd.address != "" {
+		fmt.Printf("\t%v\t%v", rd.address, getBalance(rd.address))
+	}
+
+	if rd.wif != nil {
+		fmt.Printf("\t%v", rd.wif.String())
+	}
+
+	fmt.Print("\n")
+}
+
 func main() {
 	var (
 		dataDir = flag.String("datadir", filepath.Join(btcutil.AppDataDir("btcd", false), "data"), "BTCD: Data directory")
@@ -286,13 +324,7 @@ func main() {
 				err := f(db, rd)
 				if err != nil {
 					log.Println("Skipping at stage", i)
-					blkPrev, _ := db.FetchBlockBySha(rd.txPrev.BlkSha)
-					fmt.Printf("%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\t%v\n",
-						rd.in.H, rd.blkSha.String(), rd.blk.MsgBlock().Header.Timestamp.Unix(),
-						rd.in.Tx, rd.tx.Sha(), rd.in.TxIn,
-						blkPrev.Height(), rd.txPrev.BlkSha.String(), blkPrev.MsgBlock().Header.Timestamp.Unix(),
-						rd.r,
-					)
+					printLine(rd)
 					continue inLoop
 				}
 			}
