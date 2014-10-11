@@ -1,7 +1,6 @@
 package main
 
 import (
-	"crypto/ecdsa"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -17,25 +16,6 @@ import (
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwire"
 )
-
-func btcdbSetup(dataDir, dbType string) (db btcdb.Db) {
-	// Setup database access
-	blockDbNamePrefix := "blocks"
-	dbName := blockDbNamePrefix + "_" + dbType
-	if dbType == "sqlite" {
-		dbName = dbName + ".db"
-	}
-	dbPath := filepath.Join(dataDir, "mainnet", dbName)
-
-	log.Println("loading db", dbType)
-	db, err := btcdb.OpenDB(dbType, dbPath)
-	if err != nil {
-		log.Fatalln("db open failed:", err)
-	}
-	log.Println("db load complete")
-
-	return
-}
 
 type inData struct {
 	H    int64
@@ -59,8 +39,6 @@ type rData struct {
 	txPrevOutIndex uint32
 	blkPrev        *btcutil.Block
 
-	script *btcscript.Script
-
 	sigStr []byte
 	pkStr  []byte
 
@@ -74,7 +52,21 @@ type rData struct {
 	wif *btcutil.WIF
 }
 
-func fetchTx(db btcdb.Db, rd *rData) error {
+func btcdbSetup(dataDir, dbType string) (db btcdb.Db, err error) {
+	// Setup database access
+	blockDbNamePrefix := "blocks"
+	dbName := blockDbNamePrefix + "_" + dbType
+	if dbType == "sqlite" {
+		dbName = dbName + ".db"
+	}
+	dbPath := filepath.Join(dataDir, "mainnet", dbName)
+
+	db, err = btcdb.OpenDB(dbType, dbPath)
+
+	return
+}
+
+func fetch(db btcdb.Db, rd *rData) error {
 	sha, err := db.FetchBlockShaByHeight(rd.in.H)
 	if err != nil {
 		return fmt.Errorf("failed FetchBlockShaByHeight(%v): %v\n", rd.in.H, err)
@@ -92,10 +84,6 @@ func fetchTx(db btcdb.Db, rd *rData) error {
 	rd.txInIndex = rd.in.TxIn
 	rd.txIn = tx.MsgTx().TxIn[rd.in.TxIn]
 
-	return nil
-}
-
-func fetchPrev(db btcdb.Db, rd *rData) error {
 	txPrevList, err := db.FetchTxBySha(&rd.txIn.PreviousOutPoint.Hash)
 	if err != nil {
 		return fmt.Errorf("failed FetchTxBySha(%v) - h %v: %v\n",
@@ -117,100 +105,6 @@ func fetchPrev(db btcdb.Db, rd *rData) error {
 	rd.txPrevOutIndex = rd.txIn.PreviousOutPoint.Index
 	rd.txPrevOut = rd.txPrev.Tx.TxOut[rd.txPrevOutIndex]
 	rd.blkPrev = blkPrev
-
-	return nil
-}
-
-func initEngine(db btcdb.Db, rd *rData) error {
-	sigScript := rd.txIn.SignatureScript
-	pkScript := rd.txPrevOut.PkScript
-	script, err := btcscript.NewScript(sigScript, pkScript, rd.txInIndex, rd.tx.MsgTx(), 0)
-	if err != nil {
-		return fmt.Errorf("failed btcscript.NewScript - h %v: %v\n", rd.in.H, err)
-	}
-
-	if btcscript.GetScriptClass(pkScript) != btcscript.PubKeyHashTy {
-		return fmt.Errorf("Not a PubKeyHash - in %v\n", rd.in)
-	}
-
-	// err = script.Execute()
-	// log.Println(in, err)
-	// os.Exit(0)
-
-	for i := 0; i < 6; i++ {
-		_, err := script.Step()
-		if err != nil {
-			return fmt.Errorf("Failed Step - in %v: %v\n", rd.in, err)
-		}
-	}
-
-	data := script.GetStack()
-
-	rd.sigStr = data[0]
-	rd.pkStr = data[1]
-	rd.script = script
-
-	aPubKey, err := btcutil.NewAddressPubKey(rd.pkStr, &btcnet.MainNetParams)
-	if err != nil {
-		return fmt.Errorf("Pubkey parse error: %v", err)
-	}
-	rd.address = aPubKey.EncodeAddress()
-	rd.compressed = aPubKey.Format() == btcutil.PKFCompressed
-
-	return nil
-}
-
-func opCheckSig(db btcdb.Db, rd *rData) error {
-	// From github.com/conformal/btcscript/opcode.go
-
-	// Signature actually needs needs to be longer than this, but we need
-	// at least  1 byte for the below. btcec will check full length upon
-	// parsing the signature.
-	if len(rd.sigStr) < 1 {
-		return fmt.Errorf("OP_CHECKSIG ERROR")
-	}
-
-	// Trim off hashtype from the signature string.
-	hashType := rd.sigStr[len(rd.sigStr)-1]
-	sigStr := rd.sigStr[:len(rd.sigStr)-1]
-
-	// Get script from the last OP_CODESEPARATOR and without any subsequent
-	// OP_CODESEPARATORs
-	subScript := rd.script.SubScript()
-
-	// Unlikely to hit any cases here, but remove the signature from
-	// the script if present.
-	subScript = btcscript.RemoveOpcodeByData(subScript, sigStr)
-
-	hash := btcscript.CalcScriptHash(subScript, hashType, rd.tx.MsgTx(), rd.txInIndex)
-
-	pubKey, err := btcec.ParsePubKey(rd.pkStr, btcec.S256())
-	if err != nil {
-		return fmt.Errorf("OP_CHECKSIG ERROR")
-	}
-
-	signature, err := btcec.ParseSignature(sigStr, btcec.S256())
-	if err != nil {
-		return fmt.Errorf("OP_CHECKSIG ERROR")
-	}
-
-	// log.Printf("op_checksig\n"+
-	// 	"pubKey:\n%v"+
-	// 	"pubKey.X: %v\n"+
-	// 	"pubKey.Y: %v\n"+
-	// 	"signature.R: %v\n"+
-	// 	"signature.S: %v\n"+
-	// 	"checkScriptHash:\n%v",
-	// 	hex.Dump(pkStr), pubKey.X, pubKey.Y,
-	// 	signature.R, signature.S, hex.Dump(hash))
-
-	if ok := ecdsa.Verify(pubKey.ToECDSA(), hash, signature.R, signature.S); !ok {
-		return fmt.Errorf("OP_CHECKSIG FAIL")
-	}
-
-	rd.signature = signature
-	rd.pubKey = pubKey
-	rd.hash = hash
 
 	return nil
 }
@@ -250,7 +144,11 @@ func main() {
 	)
 	flag.Parse()
 
-	db := btcdbSetup(*dataDir, *dbType)
+	db, err := btcdbSetup(*dataDir, *dbType)
+	if err != nil {
+		log.Println("btcdbSetup error:", err)
+		return
+	}
 	defer db.Close()
 
 	var jsonFile = flag.String("json", "blockchainr.json", "blockchainr output")
@@ -274,21 +172,27 @@ func main() {
 	targets := make(map[[2]string][]*rData)
 
 	for r, inDataList := range results {
-		// log.Println(r)
-
-	inLoop:
 		for _, in := range inDataList {
 			rd := &rData{r: r, in: in}
 
-			for i, f := range []func(btcdb.Db, *rData) error{
-				fetchTx, fetchPrev, initEngine, opCheckSig,
-			} {
-				err := f(db, rd)
-				if err != nil {
-					log.Println("Skipping at stage", i)
+			if err := fetch(db, rd); err != nil {
+				log.Println("Skipping at fetch:", err)
+				printLine(rd)
+				continue
+			}
+
+			switch t := btcscript.GetScriptClass(rd.txPrevOut.PkScript); t {
+			case btcscript.PubKeyHashTy:
+				if err := processPubKeyHash(db, rd); err != nil {
+					log.Println("Skipping at opCheckSig:", err)
 					printLine(rd)
-					continue inLoop
+					continue
 				}
+			default:
+				log.Println("Unsupported pkScript type:",
+					btcscript.ScriptClassToName[t], rd.in)
+				printLine(rd)
+				continue
 			}
 
 			// TODO: group compressed and uncompressed together
@@ -297,5 +201,42 @@ func main() {
 		}
 	}
 
-	doTheMagic(targets, db)
+	// Do the magic!
+	for _, target := range targets {
+		if len(target) < 2 {
+			// The r value was reused across different addresses
+			// TODO: also this information would be interesting to graph
+
+			for _, rd := range target {
+				printLine(rd)
+			}
+
+			continue
+		}
+
+		a := target[0]
+		b := target[1]
+
+		log.Printf("[%v]\n", a.address)
+		log.Printf("Repeated r value: %v (%v times)\n", a.r, len(target))
+
+		privKey := recoverKey(a.signature, b.signature, a.hash, b.hash, a.pubKey)
+		if privKey == nil {
+			log.Print("recoverKey error\n\n")
+			continue
+		}
+
+		wif, err := btcutil.NewWIF(privKey, &btcnet.MainNetParams, a.compressed)
+		if err != nil {
+			log.Printf("NewWIF error: %v\n\n", err)
+			continue
+		}
+
+		for _, rd := range target {
+			rd.wif = wif
+			printLine(rd)
+		}
+
+		log.Printf("%v\n\n", wif.String())
+	}
 }

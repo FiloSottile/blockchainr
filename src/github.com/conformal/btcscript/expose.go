@@ -19,3 +19,6 @@ func (s *Script) SubScript() []parsedOpcode {
 func RemoveOpcodeByData(pkscript []parsedOpcode, data []byte) []parsedOpcode {
 	return removeOpcodeByData(pkscript, data)
 }
+
+// Map payment types to their names.
+var ScriptClassToName = scriptClassToName
