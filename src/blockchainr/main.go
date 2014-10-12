@@ -80,6 +80,7 @@ type rData struct {
 	H    int64
 	Tx   int
 	TxIn int
+	Data int
 }
 
 func getSignatures(maxHeigth int64, log btclog.Logger, db btcdb.Db) chan *rData {
@@ -133,25 +134,24 @@ func getSignatures(maxHeigth int64, log btclog.Logger, db btcdb.Db) chan *rData 
 					}
 
 					for t, txin := range tx.TxIn {
-						data, err := btcscript.PushedData(txin.SignatureScript)
+						dataSlice, err := btcscript.PushedData(txin.SignatureScript)
 						if err != nil {
 							continue
 						}
 
-						if len(data) == 0 {
-							continue
-						}
+						for d, data := range dataSlice {
+							signature, err := btcec.ParseSignature(data, btcec.S256())
+							if err != nil {
+								continue
+							}
 
-						signature, err := btcec.ParseSignature(data[0], btcec.S256())
-						if err != nil {
-							continue
-						}
-
-						sigChan <- &rData{
-							sig:  signature,
-							H:    blk.Height(),
-							Tx:   i,
-							TxIn: t,
+							sigChan <- &rData{
+								sig:  signature,
+								H:    blk.Height(),
+								Tx:   i,
+								TxIn: t,
+								Data: d,
+							}
 						}
 					}
 				}
