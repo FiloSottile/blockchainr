@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+body {
+  font: 20px 'Open Sans';
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.axis path {
+  stroke-width: 3px;
+}
+
+</style>
+<body>
+<script src="d3.min.js"></script>
+<script>
+
+var margin = {top: 20, right: 30, bottom: 40, left: 40},
+    width = 960 - margin.left - margin.right,
+    height = 600 - margin.top - margin.bottom,
+    timeFormat = d3.time.format("%b %y");
+
+var x = d3.time.scale()
+    .range([0, width]);
+
+var y = d3.scale.ordinal()
+    .rangePoints([20, height - 5]);
+
+var color = d3.scale.ordinal()
+    .rangePoints([0, 360]);
+
+var xAxis = d3.svg.axis()
+    .scale(x)
+    .ticks(d3.time.months, 4)
+    .tickPadding(10)
+    .tickFormat(timeFormat);
+
+var svg = d3.select("body").insert("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+  .append("g")
+    .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+function drawX(t, d) {
+  svg.append("line")
+      .attr("stroke", "blue")
+      .attr("stroke-width", 2)
+      .attr("x1", x(new Date(t * 1000)) - 4)
+      .attr("y1", y(d.addr) - 4)
+      .attr("x2", x(new Date(t * 1000)) + 4)
+      .attr("y2", y(d.addr) + 4);
+  svg.append("line")
+      .attr("stroke", "blue")
+      .attr("stroke-width", 2)
+      .attr("x1", x(new Date(t * 1000)) - 4)
+      .attr("y1", y(d.addr) + 4)
+      .attr("x2", x(new Date(t * 1000)) + 4)
+      .attr("y2", y(d.addr) - 4);
+}
+
+d3.tsv("../data/analyzr.tsv", function(error, data) {
+d3.json("../data/tags.json", function(error, tags) {
+
+  addrDomain = d3.set();
+  rDomain = d3.set();
+
+  data.forEach(function(d) {
+    d.blkTime = new Date(d.blkTime * 1000);
+    addrDomain.add(d.addr);
+    rDomain.add(d.r);
+  });
+
+  x.domain(d3.extent(data, function(d) { return d.blkTime; })).nice();
+  y.domain(addrDomain.values());
+  color.domain(rDomain.values());
+
+  svg.append("g")
+      .attr("class", "x axis")
+      .attr("transform", "translate(0," + height + ")")
+      .call(xAxis);
+
+  var dots = svg.selectAll(".dot")
+      .data(data)
+    .enter().append("circle")
+      .attr("class", "dot")
+      .attr("r", 3.5)
+      .attr("cx", function(d) { return x(d.blkTime); })
+      .attr("cy", function(d) { return y(d.addr); })
+      .on("click", function(d) { console.log(d); });
+
+  if (window.location.search == "?tx") {
+    dots.style("fill", function(d) { return d3.hsl(color(d.r), 0.5, 0.5); });
+  }
+
+  if (window.location.search == "?multisig") {
+    dots.style("fill", function(d) {
+      if (!d.addr) return "black";
+      if (tags[d.addr]["in-multisig"] || tags[d.addr]["out-multisig"]) {
+        d.tagged = true;
+        return "red";
+      }
+      return "grey";
+    });
+  }
+
+  if (window.location.search == "?simple") {
+    dots.style("fill", function(d) { return d3.hsl(color(d.r), 0.5, 0.5); })
+      .filter(function(d) {
+        return (!d.addr ||
+          tags[d.addr]["in-multisig"] || tags[d.addr]["out-multisig"] ||
+          tags[d.addr]["attacker-name"] == "KJ");
+      }).remove();
+  }
+
+  if (window.location.search == "?kj") {
+    dots.style("fill", function(d) {
+      if (!d.addr) return "grey";
+      if (tags[d.addr]["attacker-name"] == "KJ") {
+        d.tagged = true;
+        return "red";
+      }
+      return "grey";
+    });
+  }
+
+  if (window.location.search == "?gomez") {
+    dots.style("fill", function(d) {
+      if (!d.addr) return "grey";
+      if (tags[d.addr]["attacker-name"] == "GOMEZ") {
+        for (var i = tags[d.addr]["attacker-time"].length - 1; i >= 0; i--)
+          drawX(tags[d.addr]["attacker-time"][i], d);
+        return "red";
+      }
+      return "grey";
+    })
+      .filter(function(d) {
+        return (!d.addr ||
+          tags[d.addr]["in-multisig"] || tags[d.addr]["out-multisig"] ||
+          tags[d.addr]["attacker-name"] == "KJ");
+      }).remove();
+  }
+
+  if (window.location.search == "?doubletx") {
+    dots.style("fill", function(d) {
+      if (tags[d.txSha] && tags[d.txSha]["repeated-r"]) {
+        d.tagged = true;
+        return "red";
+      }
+      return "grey";
+    });
+  }
+
+  if (window.location.search == "?nick") {
+    dots.style("fill", function(d) {
+      if (d.addr == "1KqzW9R4bv33bNNZQRziW5askwed9wKFjV") {
+        // d.tagged = true;
+        return "lightgreen";
+      }
+      return "grey";
+      })
+      .filter(function(d) {
+        return (!d.addr ||
+          tags[d.addr]["in-multisig"] || tags[d.addr]["out-multisig"] ||
+          tags[d.addr]["attacker-name"] == "KJ");
+      }).remove();
+  }
+
+  dots.sort(function (a, b) {
+      if (a.tagged) {
+        if (b.tagged) return 0;
+        return 1;
+      }
+      if (b.tagged) return -1;
+      return 0;
+  });
+
+})});
+
+</script>
+<body>
+  <div>
+    <a href="?tx">tx</a> <a href="?multisig">mutlisig</a> <a href="?simple">simple</a> <a href="?kj">kj</a> <a href="?gomez">gomez</a> <a href="?doubletx">doubletx</a> <a href="?nick">nick</a>
+  </div>
+</body>
