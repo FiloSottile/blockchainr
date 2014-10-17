@@ -14,6 +14,12 @@ func (s *Script) SubScript() []parsedOpcode {
 	return s.subScript()
 }
 
+// Next will return the value of the next opcode to be executed
+func (s *Script) Next() byte {
+	opcode := s.scripts[s.scriptidx][s.scriptoff]
+	return opcode.opcode.value
+}
+
 // RemoveOpcodeByData will return the pkscript minus any opcodes that would
 // push the data in ``data'' to the stack.
 func RemoveOpcodeByData(pkscript []parsedOpcode, data []byte) []parsedOpcode {
